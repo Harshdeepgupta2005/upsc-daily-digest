@@ -1,0 +1,9 @@
+node_modules/
+release/
+data/
+*.log
+.DS_Store
+
+# Generated icon intermediates (the final icon.png/icns/ico are committed)
+build/icon.iconset/
+build/icon-*.png

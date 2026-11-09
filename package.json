@@ -1,0 +1,113 @@
+{
+  "name": "upsc-daily-digest",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Automated UPSC current-affairs research desk: multi-source RSS aggregation, cross-source verification, syllabus tagging and revision notes.",
+  "type": "module",
+  "main": "electron/main.js",
+  "author": "Harshdeep Gupta",
+  "license": "UNLICENSED",
+  "scripts": {
+    "start": "node server.js",
+    "app": "electron .",
+    "research": "node scripts/daily-run.js",
+    "selftest": "node scripts/selftest.js",
+    "icons": "node scripts/make-icons.js",
+    "pack": "electron-builder --dir",
+    "dist": "electron-builder",
+    "dist:mac": "electron-builder --mac",
+    "dist:win": "electron-builder --win"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "dependencies": {
+    "fast-xml-parser": "^4.5.0"
+  },
+  "devDependencies": {
+    "electron": "^45.2.3",
+    "electron-builder": "^26.18.0"
+  },
+  "build": {
+    "appId": "com.harshdeepgupta.upscdigest",
+    "productName": "UPSC Daily Digest",
+    "copyright": "Copyright © 2026 Harshdeep Gupta",
+    "asar": true,
+    "directories": {
+      "output": "release",
+      "buildResources": "build"
+    },
+    "toolsets": {
+      "nsis": "1.2.1"
+    },
+    "files": [
+      "electron/**/*",
+      "src/**/*",
+      "public/**/*",
+      "server.js",
+      "config.json",
+      "package.json",
+      "!**/*.map"
+    ],
+    "extraResources": [
+      {
+        "from": "build/icon.png",
+        "to": "icon.png"
+      }
+    ],
+    "artifactName": "UPSC-Daily-Digest-${version}-${os}-${arch}.${ext}",
+    "publish": [
+      {
+        "provider": "github",
+        "owner": "Harshdeepgupta2005",
+        "repo": "upsc-daily-digest"
+      }
+    ],
+    "mac": {
+      "category": "public.app-category.education",
+      "icon": "build/icon.icns",
+      "hardenedRuntime": false,
+      "gatekeeperAssess": false,
+      "target": [
+        {
+          "target": "dmg",
+          "arch": [
+            "universal"
+          ]
+        },
+        {
+          "target": "zip",
+          "arch": [
+            "universal"
+          ]
+        }
+      ]
+    },
+    "dmg": {
+      "title": "UPSC Daily Digest ${version}",
+      "backgroundColor": "#171a17"
+    },
+    "win": {
+      "icon": "build/icon.ico",
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        }
+      ]
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowElevation": true,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "UPSC Daily Digest",
+      "deleteAppDataOnUninstall": false,
+      "runAfterFinish": true
+    }
+  }
+}
