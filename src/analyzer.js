@@ -1,6 +1,6 @@
 import {
   cleanText, canonicalUrl, hashId, titleTokens, textTokens, jaccard, splitSentences,
-  firstSentences, extractEntities, extractHooks, listJoin, clamp, escapeRegExp,
+  firstSentences, extractEntities, extractHooks, listJoin, clamp, escapeRegExp, tokenize,
 } from "./text.js";
 import { THEMES, THEME_BY_ID, NEGATIVE_SIGNALS } from "./themes.js";
 
@@ -68,10 +68,51 @@ const TITLE_NOISE = [
   /\b(?:two|three|four)-year field trial\b/i,
   /\b(?:yield, quality|soil acidity|eutrophication)\b/i,
   /\b(?:diwali|festival)\b.*\b(?:costlier|squeez\w* budgets?|price pinch)\b/i,
+  // Corporate deal, order-book and market-movement copy that is industry news
+  // rather than policy current affairs.
+  /\b(?:bags?|wins?|secures?|in race for)\b.*\b(?:order|contract|project|deal|mandate)\b/i,
+  /\b(?:plans?|eyes?|to hit full capacity|explores?)\b.*\b(?:capex|expansion|m&a|acquisition|exports?|headcount|capacity|diversif\w*)\b/i,
+  /\b(?:net profit|quarterly results|q[1-4] results|profit rises|revenue rises|shares rise|stock surges|market cap)\b/i,
+  /\b(?:stocks?|equities|shares?|markets?)\b.*\b(?:rally|surge|slump|fall|slip|gain|close|end|pause|bull run|bear)\b/i,
+  /\b(?:rupee|bond yields?|g-secs?|treasury yields?)\b.*\b(?:strengthen|weaken|ease|rise|fall|hold|steady|close|gain|slide|winning streak|losing streak|breaks?|slips?|streak|bids?)\b/i,
+  /\b(?:ipo|sebi nod|muhurat trading|fpi|fii)\b/i,
+  /\b(?:upgrades?|downgrades?)\s+India\b/i,
+  /\b(?:opens? (?:an? )?(?:ai|tech|research|development) (?:centre|center|hub)|sets? india pricing|memo to|talent density)\b/i,
+  /\b(?:sees? \d+[-\d]*%|savings potential|district cooling market)\b/i,
+  // Partisan sparring, election horse-race colour and personal attacks.
+  /\b(?:challenges?|dares?)\b.*\b(?:debate|contest)\b/i,
+  /\b(?:alleges?|accuses?|hits? back|fires? back|slams?|mocks?|taunts?)\b.*\b(?:bjp|congress|aap|tmc|dmk|brs|ysrcp|jdu|rjd|nda|opposition|govt|government)\b/i,
+  /\b(?:bjp|congress|aap|tmc|dmk|brs|ysrcp|jdu|rjd|nda|opposition)\b.*\b(?:alleges?|accuses?|hits? back|fires? back|slams?|mocks?|taunts?)\b/i,
+  /\b(?:popularity|game plan|presidential candidate|chief ministerial candidate)\b/i,
+  /\b(?:brahminical|hindutva)\b.*\b(?:criticism|row|debate|controversy)\b/i,
+  /\b(?:mocks?|taunts?)\b.*\b(?:china|pakistan|congress|bjp|opposition|govt|government)\b/i,
+  /\b(?:only kidding|work culture debate|techie seeks)\b/i,
+  // Live conflict tickers, aviation near-misses and foreign political colour.
+  /^\s*[^:]{0,90}\bLIVE\b\s*:/i,
+  /\b(?:war|conflict)\s+LIVE\b/i,
+  /\b(?:on verge of breakthrough|war against .* not .* popular)\b/i,
+  /\b(?:s-400|arms maker|mercenar\w*|rifles?, machine guns)\b/i,
+  /\b(?:planes? nearly collide|nearly collide after take-?off|collide after take-?off)\b/i,
+  /\b(?:mamdani|zohran|white house press secretary)\b/i,
+  /\b(?:indian-americans?|person of indian origin)\b.*\b(?:elected|appointed|wins?)\b/i,
+  // Hotel, hospitality and real-estate market pieces.
+  /\b(?:hotels?|hospitality|real estate)\b.*\b(?:destination|development|investment|market|arrivals?)\b/i,
+  // Local accidents, crime and obituaries.
+  /\b(?:burnt alive|found dead|shot dead|stabbed to death|gangster|smuggler)\b/i,
+  /\b(?:mla|mp|minister|actor|singer|former \w+)\b.*\b(?:dies|dead|passes away)\b/i,
+  /\b(?:killed over|murdered over|gives hope to .* family)\b/i,
+  /\b(?:car|bus|truck|speeding)\b.*\b(?:crashes?|crash into|collide|accident)\b/i,
+  // Festival trivia and civic diary items.
+  /\b(?:date\s*&\s*time|shubh muhurat|significance & more|history, significance)\b/i,
+  /\b(?:devotees throng|greet people on|celebrations begin|festivities)\b/i,
+  /\b(?:tatkal|booking quota|route, stops, travel time|likely to launch)\b/i,
+  /\b(?:local hiring|airport slots?)\b/i,
+  // Academic paper titles rather than current affairs.
+  /\b(?:spatial intrinsic|feedback effects|ecosystem services supply|soil infiltration|machine learning algorithms for prediction|design alternatives|field-measured|flood-depth data)\b/i,
 ];
 
 // Administrative circulars and auction notices from official feeds.
-const RBI_ROUTINE = /\b(?:auction|underwriting|treasury bills?|variable rate repo|variable rate reverse repo|vrrr?|statistical supplement|weekly statistical|deployment of credit|extension of period|directions under section|corrigendum|penalty on|penalties on|know your customer|master direction)\b/i;
+const RBI_ROUTINE = /\b(?:auction|underwriting|treasury bills?|variable rate repo|variable rate reverse repo|vrrr?|statistical supplement|weekly statistical|deployment of credit|extension of period|directions under section|corrigendum|penalty on|penalties on|know your customer|master direction|money market operations?|certificate of registration|cancellation of certificate)\b/i;
 const OFFICIAL_ROUTINE = /\b(?:corrigendum|request for proposal|rfp|expression of interest|eoi|tender notice|tender for|cancellation of tender)\b/i;
 
 const INDIA_RE = /\b(?:india|indian|delhi|modi|jaishankar|sitharaman|nirmala|rbi|isro|supreme court of india|parliament of india)\b/i;
@@ -346,8 +387,13 @@ const VERIFICATION_LABEL = {
 };
 
 function factSentences(body, summary) {
-  const text = [summary, body].filter(Boolean).join(" ");
-  const sentences = splitSentences(text).filter((s) => s.length >= 45 && s.length <= 260);
+  const summarySets = splitSentences(summary || "")
+    .filter((s) => s.length >= 30)
+    .map((s) => titleTokens(s));
+  const sentences = splitSentences(body)
+    .filter((s) => s.length >= 45 && s.length <= 260)
+    // Key facts should add detail, not restate the card summary.
+    .filter((s) => !summarySets.some((set) => jaccard(titleTokens(s), set) > 0.5));
   const scored = sentences.map((s, index) => {
     let score = 0;
     if (/\d/.test(s)) score += 2;
@@ -370,13 +416,6 @@ function factSentences(body, summary) {
   }
   picked.sort((a, b) => a.index - b.index);
   return picked.map((p) => p.s.replace(/\s+/g, " ").trim());
-}
-
-function shortTitle(title, max = 115) {
-  const t = title.replace(/\s+/g, " ").trim();
-  if (t.length <= max) return t;
-  const cut = t.slice(0, max);
-  return cut.slice(0, cut.lastIndexOf(" ")) + "…";
 }
 
 function mulberry32(seed) {
@@ -411,11 +450,84 @@ function buildMcq(item, theme) {
     [options[i], options[j]] = [options[j], options[i]];
   }
   return {
-    question: `The development reported as “${shortTitle(item.title, 120)}” is most directly connected to which of the following?`,
+    question: "The development summarised above is most directly connected to which of the following?",
     options,
     answer: options.findIndex((o) => o.correct),
     explanation: `Filed under ${theme.paper} · ${theme.name}. The item matches signals such as ${listJoin(item.keywords.slice(0, 4))}. Verify specifics in ${item.sources[0]?.name || "the linked source"}.`,
   };
+}
+
+const SUMMARY_POLICY = /\b(?:act|bill|scheme|mission|policy|committee|commission|court|tribunal|agreement|treaty|target|budget|allocation|rate|index|inflation|growth|percent|per cent|crore|lakh|billion|million|tonnes?|mw|gw)\b/i;
+
+// Build the card text from all outlets covering the story. Headline-like
+// sentences are down-weighted so the card leads with substance rather than a
+// newspaper headline, and a corroborating outlet can contribute one detail.
+function buildCrossCheckedSummary(cluster, lead, enriched) {
+  const titleSet = titleTokens(lead.title || "");
+  const contextSet = new Set([...titleSet, ...textTokens(lead.summary || "", 60)]);
+  const candidates = [];
+  const description = cleanText(enriched?.description || "", { max: 700 });
+  if (description.length >= 60) candidates.push({ member: lead, text: description, weight: 8, support: false });
+  if (lead.summary) candidates.push({ member: lead, text: lead.summary, weight: 6, support: false });
+  for (const member of cluster.members) {
+    if (member === lead || member.outlet === lead.outlet) continue;
+    if (member.summary && member.summary.length >= 80) {
+      candidates.push({ member, text: member.summary, weight: 2.5, support: true });
+    }
+  }
+
+  const pool = [];
+  const seen = new Set();
+  for (let ci = 0; ci < candidates.length; ci++) {
+    const { text, weight, support } = candidates[ci];
+    const sentences = splitSentences(text).filter((s) => s.length >= 45 && s.length <= 320);
+    for (let si = 0; si < sentences.length; si++) {
+      const sentence = sentences[si].replace(/\s+/g, " ").trim();
+      const sentenceTokens = titleTokens(sentence);
+      // A corroborating outlet should add detail about the same event, not a
+      // stray sentence from an unrelated item that happened to share a word.
+      if (support && jaccard(sentenceTokens, contextSet) < 0.12) continue;
+      const key = tokenize(sentence).slice(0, 14).join(" ");
+      if (!key || seen.has(key)) continue;
+      seen.add(key);
+      const overlap = jaccard(sentenceTokens, titleSet);
+      const opening = tokenize(sentence).slice(0, 2).join(" ");
+      let score = weight;
+      score += Math.min(4, (sentence.match(/\d/g) || []).length);
+      if (SUMMARY_POLICY.test(sentence)) score += 2;
+      if (si === 0) score += 1;
+      if (sentence.length >= 90 && sentence.length <= 240) score += 1;
+      score -= overlap * 6;
+      pool.push({ sentence, sentenceTokens, opening, score, ci, si });
+    }
+  }
+
+  if (!pool.length) {
+    const fallback = firstSentences(lead.summary || lead.title, 3, 520);
+    return jaccard(titleTokens(fallback), titleSet) > 0.7 ? "" : fallback;
+  }
+
+  pool.sort((a, b) => b.score - a.score || a.ci - b.ci || a.si - b.si);
+  const chosen = [];
+  let length = 0;
+  for (const candidate of pool) {
+    if (chosen.length >= 2) break;
+    if (chosen.length && length + candidate.sentence.length > 560) continue;
+    if (chosen.some((x) => jaccard(x.sentenceTokens, candidate.sentenceTokens) > 0.5)) {
+      continue;
+    }
+    // Two sentences that open with the same two content words are restatements
+    // even when the verb differs ("G7 foreign ministers are meeting…" vs
+    // "G7 foreign ministers are convening…").
+    if (candidate.opening && chosen.some((x) => x.opening === candidate.opening)) continue;
+    chosen.push(candidate);
+    length += candidate.sentence.length;
+  }
+  chosen.sort((a, b) => a.ci - b.ci || a.si - b.si);
+  const out = chosen.map((item) => item.sentence).join(" ");
+  // If the only usable text was the headline itself, leave the card without a
+  // summary rather than silently reintroducing the headline.
+  return jaccard(titleTokens(out), titleSet) > 0.7 ? "" : out;
 }
 
 export function buildFinalItem(cluster, enriched) {
@@ -424,12 +536,10 @@ export function buildFinalItem(cluster, enriched) {
   const theme = THEME_BY_ID.get(lead.theme) || THEMES[0];
 
   const body = enriched?.body || "";
-  const description = enriched?.description || "";
-  const summarySource = description && description.length > 60 ? description : lead.summary;
-  const summary = firstSentences(summarySource, 3, 460);
+  const summary = buildCrossCheckedSummary(cluster, lead, enriched);
 
-  const facts = factSentences(body.slice(0, 7000), lead.summary);
-  const factList = facts.length >= 2 ? facts : splitSentences(lead.summary).slice(0, 3);
+  const facts = factSentences(body.slice(0, 7000), summary);
+  const factList = facts;
   const prelimsHooks = extractHooks(`${lead.title}. ${body.slice(0, 4000)}`, 6);
 
   const keywordSet = new Set(lead.keywords);
@@ -505,37 +615,42 @@ export function buildFinalItem(cluster, enriched) {
   return item;
 }
 
-export function selectItems(items, config) {
-  const sorted = [...items].sort((a, b) => b.relevance - a.relevance || new Date(b.publishedAt) - new Date(a.publishedAt));
-  const counts = new Map();
-  const topicCounts = new Map();
-  const out = [];
-  const topicKeyOf = (item) => {
-    const text = `${item.title} ${(item.keywords || []).join(" ")}`.toLowerCase();
-    // Delhi-NCR air-quality coverage arrives as several different headlines
-    // (GRAP, AQI rankings, purifier prices). Treat it as one running story.
-    if (/\b(?:air pollution|air quality|smog|grap|aqi|pm ?2\.5|stubble burning|toxic air|air purif\w*|prevent pollution)\b/.test(text)) {
-      return "family|air-pollution";
-    }
-    if (/\b(?:cyclone|hurricane|typhoon)\b/.test(text)) {
-      return "family|cyclone";
-    }
-    return `${item.theme}|${item.primaryTopic}`;
-  };
-  for (const item of sorted) {
-    if (out.length >= config.maxItemsPerDay) break;
-    if (item.relevance < config.minRelevance) continue;
-    const n = counts.get(item.theme) || 0;
-    if (n >= (config.maxPerTheme || 12)) continue;
-    const topicKey = topicKeyOf(item);
-    const topicLimit = topicKey.startsWith("family|") ? 1 : (config.maxPerTopic || 2);
-    const t = topicCounts.get(topicKey) || 0;
-    if (t >= topicLimit) continue;
-    counts.set(item.theme, n + 1);
-    topicCounts.set(topicKey, t + 1);
-    out.push(item);
+// One running story can surface as several clusters when outlets use different
+// framings (for example Delhi AQI readings, monitoring-station outages and
+// Diwali firecracker coverage). Collapse those into the single best card rather
+// than publishing the same event repeatedly.
+function storyFamilyKey(item) {
+  const text = `${item.title || ""} ${(item.keywords || []).join(" ")}`.toLowerCase();
+  if (/\b(?:air pollution|air quality|smog|grap|aqi|pm ?2\.5|stubble burning|toxic air|firecrackers?)\b/.test(text)) {
+    return "family|air-pollution";
   }
-  return out.sort((a, b) => b.relevance - a.relevance);
+  if (/\b(?:cyclone|hurricane|typhoon)\b/.test(text)) return "family|cyclone";
+  return "";
+}
+
+export function selectItems(items, config) {
+  const minRelevance = Number(config?.minRelevance) || 0;
+  const eligible = [...items]
+    .filter((item) => item.relevance >= minRelevance)
+    // The Today desk leads with a summary, not a headline. Items whose feeds
+    // exposed only a title cannot satisfy that, so leave them out rather than
+    // silently falling back to the newspaper headline.
+    .filter((item) => String(item.summary || "").trim().length >= 40)
+    .sort((a, b) => b.relevance - a.relevance || new Date(b.publishedAt) - new Date(a.publishedAt));
+
+  const kept = [];
+  const families = new Set();
+  for (const item of eligible) {
+    const family = storyFamilyKey(item);
+    if (family && families.has(family)) continue;
+    const duplicate = kept.some(
+      (other) => jaccard(titleTokens(item.title || ""), titleTokens(other.title || "")) > 0.6
+    );
+    if (duplicate) continue;
+    if (family) families.add(family);
+    kept.push(item);
+  }
+  return kept;
 }
 
 export function themeLabel(id) {

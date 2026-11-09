@@ -96,16 +96,16 @@ Double-click **`Remove Daily Schedule.cmd`**.
 
 ## What is in the dashboard
 
-- **Today** — lead story, two-column briefing grid, search, GS-paper filters and verification filters.
+- **Today** — lead story, two-column briefing grid, summary-first cards, search, GS-paper filters and verification filters.
 - **Archive** — every saved digest, grouped by month, with story counts by paper.
 - **Bookmarks** — stories you star, saved in your browser's local storage.
 - **Sources** — all configured feeds, their type, region and latest fetch health.
-- **Method** — a plain-language explanation of how stories are selected and verified.
+- The **Method** page (linked in the footer) explains how stories are selected and verified.
 
 Each story card contains:
 
 - UPSC relevance score and **GS paper / syllabus theme**
-- A short summary and 2–3 **key facts**
+- A **cross-checked summary** and 2–3 **key facts**, with a link to the original coverage
 - **Why it matters** for Mains, plus a Prelims focus note
 - **Source links** with a verification label
 - One **Prelims MCQ** with a revealable answer and explanation
@@ -150,16 +150,13 @@ Edit `config.json` — in this folder when running from source, or beside the `d
 | --- | --- | --- |
 | `port` | `4178` | Local dashboard port |
 | `runAt` | `"06:00"` | Daily research time |
-| `timezone` | `"Asia/Kolkata"` | Timezone for date keys and the next-run label |
+| `timezone` | `"Asia/Kolkata"` | Timezone for date keys and the scheduled run |
 | `freshnessHours` | `9` | Re-research when the digest is older than this |
-| `maxItemsPerDay` | `45` | Maximum stories in a digest |
 | `maxItemAgeHours` | `40` | Ignore feeds older than this |
 | `enrichTopStories` | `32` | How many candidates get full-text enrichment |
 | `enrichConcurrency` | `5` | Parallel article fetches |
 | `feedConcurrency` | `8` | Parallel feed fetches |
-| `minRelevance` | `20` | Minimum relevance score |
-| `maxPerTheme` | `12` | Cap per GS theme |
-| `maxPerTopic` | `2` | Cap per topic family |
+| `minRelevance` | `30` | Minimum relevance score |
 | `disabledFeeds` | `[]` | Feed IDs to skip |
 | `scheduler.enabled` | `true` | In-process freshness checker |
 | `scheduler.checkEveryMinutes` | `20` | How often it checks |
@@ -238,7 +235,7 @@ xattr -dr com.apple.quarantine "/Applications/UPSC Daily Digest.app"
 
 **The scheduled task did not run** — open Task Scheduler, find `UPSC Digest Daily Research`, and check **Last Run Result**. The task only runs when you are logged in; missed runs are caught up at the next login.
 
-**Fewer than 45 stories appear** — that is intentional. The digest only keeps items above the relevance floor and within the per-theme and per-topic caps.
+**Story counts vary by day** — every story above the relevance floor is included. Quiet news days produce shorter editions; busy days produce longer ones.
 
 ---
 

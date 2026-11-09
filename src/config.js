@@ -6,14 +6,11 @@ export const DEFAULTS = {
   runAt: "06:00",
   timezone: "Asia/Kolkata",
   freshnessHours: 9,
-  maxItemsPerDay: 45,
   maxItemAgeHours: 40,
   enrichTopStories: 32,
   enrichConcurrency: 5,
   feedConcurrency: 8,
-  minRelevance: 20,
-  maxPerTheme: 12,
-  maxPerTopic: 2,
+  minRelevance: 30,
   disabledFeeds: [],
   scheduler: { enabled: true, checkEveryMinutes: 20 },
 };
@@ -26,7 +23,6 @@ export async function loadConfig() {
   const config = { ...DEFAULTS, ...raw };
   config.scheduler = { ...DEFAULTS.scheduler, ...(raw.scheduler || {}) };
   config.port = Number(process.env.PORT || config.port || DEFAULTS.port);
-  config.maxItemsPerDay = Number(config.maxItemsPerDay) || DEFAULTS.maxItemsPerDay;
   config.freshnessHours = Number(config.freshnessHours) || DEFAULTS.freshnessHours;
   config.maxItemAgeHours = Number(config.maxItemAgeHours) || DEFAULTS.maxItemAgeHours;
   config.enrichTopStories = Number(config.enrichTopStories) || DEFAULTS.enrichTopStories;

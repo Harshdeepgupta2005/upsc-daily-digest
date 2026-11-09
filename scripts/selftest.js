@@ -4,7 +4,7 @@ import {
   titleTokens, textTokens,
 } from "../src/text.js";
 import { parseFeed } from "../src/rss.js";
-import { detectTheme, clusterItems } from "../src/analyzer.js";
+import { detectTheme, clusterItems, selectItems } from "../src/analyzer.js";
 import { nextRunInfo } from "../src/scheduler.js";
 
 let passed = 0;
@@ -141,6 +141,55 @@ test("parseFeed parses Atom entries", () => {
   assert.equal(items.length, 1);
   assert.equal(items[0].url, "https://example.com/b");
   assert.ok(items[0].publishedAt.startsWith("2026-11-05"));
+});
+
+test("selectItems keeps every relevant story without a fixed cap", () => {
+  const token = (i) =>
+    `zz${String.fromCharCode(97 + Math.floor(i / 26))}${String.fromCharCode(97 + (i % 26))}`;
+  const items = Array.from({ length: 120 }, (_, i) => ({
+    id: `item-${i}`,
+    title: `Distinct development ${token(i)} report`,
+    summary: `This is a sufficiently detailed summary for distinct development ${token(i)}.`,
+    theme: `theme-${i % 8}`,
+    primaryTopic: `topic-${i}`,
+    relevance: 25 + (i % 10),
+    publishedAt: new Date(2026, 10, 9, 12, 0, i).toISOString(),
+  }));
+  items.push({ ...items[0], id: "low", relevance: 5 });
+  const out = selectItems(items, { minRelevance: 20 });
+  assert.equal(out.length, 120);
+  assert.ok(out.every((item) => item.relevance >= 20));
+  assert.ok(!out.some((item) => item.id === "low"));
+});
+
+test("selectItems drops items with no summary instead of showing a headline", () => {
+  const withSummary = {
+    id: "a",
+    title: "National policy update",
+    summary: "The government announced a detailed policy change affecting several states.",
+    relevance: 45,
+    publishedAt: new Date(2026, 10, 9, 12, 0, 0).toISOString(),
+  };
+  const headlineOnly = { ...withSummary, id: "b", title: "Different headline with no body", summary: "" };
+  const out = selectItems([withSummary, headlineOnly], { minRelevance: 30 });
+  assert.deepEqual(out.map((item) => item.id), ["a"]);
+});
+
+test("selectItems collapses duplicate coverage of one running story", () => {
+  const base = {
+    summary: "Delhi recorded its most polluted Diwali in five years as monitoring stations went offline.",
+    keywords: ["air pollution", "aqi"],
+    relevance: 50,
+    publishedAt: new Date(2026, 10, 9, 12, 0, 0).toISOString(),
+  };
+  const items = [
+    { ...base, id: "pollution-a", title: "Delhi pollution mystery: monitoring stations go offline" },
+    { ...base, id: "pollution-b", title: "Delhi records most polluted Diwali in five years" },
+    { ...base, id: "other", title: "RBI holds the repo rate at 5.5 per cent", keywords: ["rbi", "repo"], relevance: 48 },
+  ];
+  const out = selectItems(items, { minRelevance: 30 });
+  assert.equal(out.length, 2);
+  assert.ok(!out.some((item) => item.id === "pollution-b"));
 });
 
 test("nextRunInfo respects the configured timezone", () => {

@@ -64,7 +64,7 @@ export async function runResearch({ config, onProgress = () => {}, log = () => {
         });
         if (!res.ok) return { source, items: [], error: res.error || "Fetch failed" };
         const parsed = parseFeed(res.text, source);
-        return { source, items: parsed.items.slice(0, 45), error: parsed.error || "" };
+        return { source, items: parsed.items, error: parsed.error || "" };
       },
       (done, total, source) => {
         progress("feeds", `Scanned ${source.name}`, { done, total, feed: source.name });
@@ -115,7 +115,6 @@ export async function runResearch({ config, onProgress = () => {}, log = () => {
     const clusters = clusterItems(unique).sort((a, b) => clusterScore(b) - clusterScore(a));
 
     const enrichLimit = Math.min(config.enrichTopStories || 32, clusters.length);
-    const buildLimit = Math.min(Math.max(enrichLimit + 38, 70), clusters.length);
     const enrichTargets = clusters.slice(0, enrichLimit).map((c) => ({ cluster: c, target: contentTarget(c) }));
 
     const cache = await loadArticleCache();
@@ -143,8 +142,8 @@ export async function runResearch({ config, onProgress = () => {}, log = () => {
 
     await saveArticleCache(cache).catch(() => {});
 
-    progress("build", "Building verified notes, facts and MCQs…", { done: 0, total: buildLimit });
-    const built = clusters.slice(0, buildLimit).map((cluster) => {
+    progress("build", "Building verified notes, facts and MCQs…", { done: 0, total: clusters.length });
+    const built = clusters.map((cluster) => {
       const enriched = enrichedMap.get(cluster) || null;
       return buildFinalItem(cluster, enriched);
     });

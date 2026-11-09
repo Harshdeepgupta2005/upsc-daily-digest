@@ -425,28 +425,6 @@ function updateChrome() {
   $("#masthead-date").textContent = dateStr ? fmtLong(dateStr).toUpperCase() : "LOCAL EDITION";
   $("#masthead-meta").textContent = parts.length ? parts.join(" · ") : "DAILY BRIEFING";
 
-  if (status) {
-    const nr = status.nextRun;
-    if (nr?.at) {
-      let dayLabel = "";
-      if (nr.date === status.date) dayLabel = "Today";
-      else if (nr.date === addDays(status.date, 1)) dayLabel = "Tomorrow";
-      else dayLabel = fmtShort(nr.date);
-      $("#next-run").textContent = `${dayLabel}, ${fmtTime(nr.at)} IST`;
-    } else {
-      $("#next-run").textContent = `Daily at ${status.config?.runAt || "06:00"} IST`;
-    }
-    $("#schedule-note").textContent = status.config?.schedulerEnabled
-      ? "Automatic daily run"
-      : "Automatic run paused";
-
-    const lastIso = status.lastSuccessAt || generated;
-    $("#last-update").textContent = lastIso ? fmtTime(lastIso) : "—";
-    $("#last-update-detail").textContent = lastIso
-      ? `${fmtShort(dateStr)} · ${digest?.items?.length ?? status.stats?.items ?? 0} stories`
-      : "No completed run yet";
-  }
-
   $("#footer-stamp").textContent = `Local edition · ${fmtShort(dateStr)}`;
 
   const refresh = $('[data-action="refresh"]');
@@ -457,13 +435,6 @@ function updateChrome() {
     const label = refresh.querySelector(".btn-label");
     if (label) label.textContent = running ? "Researching…" : "Refresh";
   }
-}
-
-function addDays(dateStr, days) {
-  if (!dateStr) return "";
-  const d = parseDay(dateStr);
-  d.setDate(d.getDate() + days);
-  return new Intl.DateTimeFormat("en-CA", { timeZone: TZ }).format(d);
 }
 
 function renderRunStatus() {
@@ -727,7 +698,7 @@ function toolbarHtml(digest) {
   return `<div class="toolbar">
     <div class="search">
       <span class="search-icon">${icon("search")}</span>
-      <input id="search" type="search" placeholder="Search headlines, topics, facts…" value="${esc(
+      <input id="search" type="search" placeholder="Search summaries, topics, facts…" value="${esc(
         state.query
       )}" autocomplete="off" spellcheck="false" aria-label="Search this briefing">
       <button class="search-clear" id="search-clear" type="button" data-action="clear-search" aria-label="Clear search" ${
@@ -876,11 +847,33 @@ function storyCard(item, lead = false, options = {}) {
       title="${saved ? "Remove bookmark" : "Save to bookmarks"}">${icon(saved ? "starFilled" : "star")}</button>
   </div>`;
 
-  const title = `<h2 class="story-title"><a href="${esc(url)}" target="_blank" rel="noopener noreferrer">${esc(
-    item.title
-  )}</a></h2>`;
+  const verification = item.verification || {};
+  const crossChecked =
+    Number(verification.officialCount) > 0 ||
+    Number(verification.outletCount) > 1 ||
+    ["official", "official-confirmed", "confirmed", "corroborated"].includes(verification.status);
 
-  const summary = item.summary ? `<p class="story-summary">${esc(item.summary)}</p>` : "";
+  const summaryText = String(item.summary || "").trim();
+  const summary = `<p class="story-summary story-summary--display${
+    summaryText ? "" : " story-summary--missing"
+  }">${
+    summaryText
+      ? esc(summaryText)
+      : "Summary unavailable. Open the original coverage for the details."
+  }</p>`;
+
+  const origin =
+    url !== "#"
+      ? `<a class="story-origin" href="${esc(url)}" target="_blank" rel="noopener noreferrer">Read original coverage ${icon(
+          "external"
+        )}</a>`
+      : "";
+
+  const check = `<div class="story-check">
+    ${verificationBadge(item.verification)}
+    <span class="check-label">${crossChecked ? "Cross-checked summary" : "Single-source summary"}</span>
+  </div>`;
+
   const why = item.whyItMatters
     ? `<div class="why"><span class="label">Why it matters</span><p>${esc(item.whyItMatters)}</p></div>`
     : "";
@@ -909,18 +902,16 @@ function storyCard(item, lead = false, options = {}) {
   const foot = `<footer class="story-foot">
     <div class="source-chips">${chips}</div>
     <div class="foot-meta">
-      ${verificationBadge(item.verification)}
-      <span class="dot">·</span>
-      <span>${esc(reading)} min</span>
+      <span>${esc(reading)} min read</span>
     </div>
   </footer>`;
 
   if (lead) {
     return `<article class="story story--lead" data-id="${id}">
       ${head}
-      ${title}
+      ${check}
       <div class="lead-grid">
-        <div class="lead-main">${summary}${why}</div>
+        <div class="lead-main">${summary}${origin}${why}</div>
         ${
           facts.length
             ? `<aside class="lead-facts"><span class="label">Key facts</span>${factList}</aside>`
@@ -934,8 +925,9 @@ function storyCard(item, lead = false, options = {}) {
 
   return `<article class="story" data-id="${id}">
     ${head}
-    ${title}
+    ${check}
     ${summary}
+    ${origin}
     ${why}
     ${factList}
     ${mcq}
@@ -1501,7 +1493,7 @@ function renderAbout() {
 
     <h2>Using the desk</h2>
     <ul>
-      <li><strong>Filter</strong> by GS paper or verification level, or search across headlines, facts and source names.</li>
+      <li><strong>Filter</strong> by GS paper or verification level, or search across summaries, facts and source names.</li>
       <li><strong>Star</strong> a story to keep it in Bookmarks for revision; it survives refreshes.</li>
       <li><strong>Practice</strong> the MCQ on each card, then reveal the explanation.</li>
       <li><strong>Export</strong> an edition as JSON, or use <strong>Print</strong> for a clean paper copy.</li>
@@ -1514,8 +1506,8 @@ function renderAbout() {
       <tr><th>Key</th><th>What it changes</th></tr>
       <tr><td>port</td><td>Local port for the dashboard (default 4178)</td></tr>
       <tr><td>runAt</td><td>Daily run time in 24-hour IST, e.g. “06:00”</td></tr>
-      <tr><td>maxItemsPerDay</td><td>Maximum stories in one edition</td></tr>
-      <tr><td>maxPerTopic</td><td>Cap on near-duplicate stories about one topic</td></tr>
+      <tr><td>maxItemAgeHours</td><td>Ignore feeds older than this</td></tr>
+      <tr><td>enrichTopStories</td><td>How many candidates get full-text enrichment</td></tr>
       <tr><td>minRelevance</td><td>Minimum syllabus score for an item to be considered</td></tr>
       <tr><td>freshnessHours</td><td>How old an edition may be before opening the app triggers a run</td></tr>
       <tr><td>disabledFeeds</td><td>Array of feed ids to skip — see <code>src/sources.js</code></td></tr>
