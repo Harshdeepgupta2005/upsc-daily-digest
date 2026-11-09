@@ -16,7 +16,7 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - os: macos-14
+          - os: macos-latest
             label: macOS (universal DMG + ZIP)
             build: mac
           - os: windows-latest
