@@ -4,7 +4,8 @@ import {
   titleTokens, textTokens,
 } from "../src/text.js";
 import { parseFeed } from "../src/rss.js";
-import { detectTheme, clusterItems, selectItems } from "../src/analyzer.js";
+import { detectTheme, clusterItems, selectItems, isNoiseTitle } from "../src/analyzer.js";
+import { migrateConfig } from "../electron/config-migrate.js";
 import { nextRunInfo } from "../src/scheduler.js";
 
 let passed = 0;
@@ -190,6 +191,69 @@ test("selectItems collapses duplicate coverage of one running story", () => {
   const out = selectItems(items, { minRelevance: 30 });
   assert.equal(out.length, 2);
   assert.ok(!out.some((item) => item.id === "pollution-b"));
+});
+
+test("legacy user config adopts new defaults without losing custom settings", () => {
+  const template = {
+    port: 4178,
+    minRelevance: 30,
+    enrichTopStories: 32,
+    disabledFeeds: [],
+    scheduler: { enabled: true, checkEveryMinutes: 20 },
+  };
+  const stored = {
+    port: 4321,
+    maxItemsPerDay: 45,
+    maxPerTheme: 12,
+    maxPerTopic: 2,
+    minRelevance: 20,
+    disabledFeeds: ["example.com"],
+    scheduler: { enabled: false },
+  };
+  const { config, changed } = migrateConfig(stored, template);
+  assert.equal(changed, true);
+  assert.equal(config.minRelevance, 30);
+  assert.equal(config.port, 4321);
+  assert.deepEqual(config.disabledFeeds, ["example.com"]);
+  assert.deepEqual(config.scheduler, { enabled: false, checkEveryMinutes: 20 });
+  assert.equal("maxItemsPerDay" in config, false);
+  assert.equal("maxPerTheme" in config, false);
+  assert.equal("maxPerTopic" in config, false);
+});
+
+test("a deliberately tuned relevance floor is preserved", () => {
+  const template = { minRelevance: 30 };
+  const { config } = migrateConfig({ minRelevance: 55 }, template);
+  assert.equal(config.minRelevance, 55);
+});
+
+test("an up-to-date config is left untouched", () => {
+  const template = { minRelevance: 30, scheduler: { enabled: true, checkEveryMinutes: 20 } };
+  const { changed } = migrateConfig(JSON.parse(JSON.stringify(template)), template);
+  assert.equal(changed, false);
+});
+
+test("noise filter drops rich lists, commodity tickers and celebrity splits", () => {
+  const noise = [
+    "Nvidia CEO Jensen Huang loses $7.4bn in 30 minutes, drops 2 spots in Forbes rich list",
+    "Gold edges lower as focus shifts to US inflation data",
+    "Oil prices edge lower as Trump signals pause in military action against Iran",
+    "Deputy CM Pawan Kalyan to part ways with wife, Anna Lezhneva",
+    "AP Deputy CM Pawan Kalyan, wife Anna Konidala to part ways",
+    "Iran war, cost of living drag Trump's approval rating near career low: Survey",
+    "What happens after a midterm tsunami? Lessons from 1974 and 1994",
+  ];
+  for (const title of noise) assert.equal(isNoiseTitle(title), true, title);
+});
+
+test("noise filter keeps genuine policy and economy stories", () => {
+  const real = [
+    "RBI holds the repo rate at 5.5 per cent as inflation eases",
+    "Prices of most Indian kharif crops rule above MSP as weather impacts production",
+    "India launches probe into dumping of aluminium products from China",
+    "CRPF to acquire loitering munitions combining drone surveillance and strike",
+  ];
+  for (const title of real) assert.equal(isNoiseTitle(title), false, title);
 });
 
 test("nextRunInfo respects the configured timezone", () => {

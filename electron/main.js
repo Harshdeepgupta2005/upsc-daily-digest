@@ -4,6 +4,7 @@ import fsp from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { buildMenu } from "./menu.js";
+import { migrateConfig } from "./config-migrate.js";
 import { checkForUpdates, RELEASES_URL } from "./updater.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -52,14 +53,31 @@ function makeLogger() {
   };
 }
 
+// Settings written by older versions keep working, but retired tuning keys must
+// be dropped and superseded defaults refreshed, otherwise an upgraded install
+// silently keeps the old behaviour (for example the v1.0.0 relevance floor).
 async function ensureUserConfig() {
   const userConfig = path.join(app.getPath("userData"), "config.json");
+  const bundled = path.join(app.getAppPath(), "config.json");
+  const template = JSON.parse(await fsp.readFile(bundled, "utf8"));
+
+  let current = null;
   try {
-    await fsp.access(userConfig);
+    current = JSON.parse(await fsp.readFile(userConfig, "utf8"));
   } catch {
-    const bundled = path.join(app.getAppPath(), "config.json");
+    current = null;
+  }
+
+  if (!current) {
     await fsp.mkdir(path.dirname(userConfig), { recursive: true });
     await fsp.copyFile(bundled, userConfig);
+    return userConfig;
+  }
+
+  const { config, changed } = migrateConfig(current, template);
+  if (changed) {
+    await fsp.mkdir(path.dirname(userConfig), { recursive: true });
+    await fsp.writeFile(userConfig, `${JSON.stringify(config, null, 2)}\n`, "utf8");
   }
   return userConfig;
 }

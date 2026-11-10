@@ -47,7 +47,13 @@ const TITLE_NOISE = [
   /\bpartners? with\b/i,
   /\b(?:x-70|flying lab)\b/i,
   // Partisan market commentary and foreign election horse-race coverage.
-  /\b(?:market losses|blames? (?:democrats|republicans)|midterm elections?)\b/i,
+  /\b(?:market losses|blames? (?:democrats|republicans)|midterms?)\b/i,
+  // Wealth rankings, commodity price tickers and celebrity personal life.
+  /\b(?:forbes|rich list|billionaires?|net worth|world'?s richest)\b/i,
+  /\b(?:spot gold|gold futures|crude(?: oil)? futures|brent crude|wti)\b/i,
+  /\b(?:gold|crude|oil)\b.*\b(?:edges? (?:lower|higher)|prices? (?:edge|ease|slip|rise|fall|climb)|per (?:barrel|ounce)|a barrel)\b/i,
+  /\b(?:part ways|announce separation|mutual respect)\b/i,
+  /\bapproval rating\b/i,
   // Journal-article titles that read as lab reports, not current affairs.
   /\b(?:alkali-activated|multi-waste|physicochemical|intercropping|genome-wide|transcriptom\w*|catalyt\w*|nanoparticl\w*|adsorption|density functional)\b/i,
   // Local enforcement actions against individual officials.
@@ -168,8 +174,12 @@ function recencyBonus(publishedAt, now) {
   return 0;
 }
 
+export function isNoiseTitle(title) {
+  return TITLE_NOISE.some((re) => re.test(String(title || "")));
+}
+
 export function prepareItem(raw, now, config) {
-  if (TITLE_NOISE.some((re) => re.test(raw.title))) return null;
+  if (isNoiseTitle(raw.title)) return null;
   if (raw.outlet === "RBI" && RBI_ROUTINE.test(raw.title)) return null;
   if (raw.sourceKind === "official" && OFFICIAL_ROUTINE.test(raw.title)) return null;
 
